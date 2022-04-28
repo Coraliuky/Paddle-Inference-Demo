@@ -206,13 +206,13 @@ Then, let's have a look at the function of each parameter in the interface:
 Int8 Quantization Forecast
 >>>>>>>>>>>>>>
 
-神经网络的参数在一定程度上是冗余的，在很多任务上，我们可以在保证模型精度的前提下，将Float32的模型转换成Int8的模型，从而达到减小计算量降低运算耗时、降低计算内存、降低模型大小的目的。使用Int8量化预测的流程可以分为两步：1）产出量化模型；2）加载量化模型进行Int8预测。下面我们对使用Paddle-TRT进行Int8量化预测的完整流程进行详细介绍。
+To some extent, the parameters of the neural network are redundant. And in many tasks, we can turn the Float32 model into the Int8 model with the precision assured to reduce the computation amount, computation time length, computation memory, and the model size. There are two steps using Int8 for quantized inference: 1) produce the quantized model; 2) load the quantized model for Int8 inference. In the following part, we will elaborate on how to use Paddle-TRT for Int8 quantized inference.
 
-**1. 产出量化模型**
+**1. Produce the quantized model**
 
-目前，我们支持通过两种方式产出量化模型：
+There are two methods are supported currently: 
 
-a. 使用TensorRT自带Int8离线量化校准功能。校准即基于训练好的FP32模型和少量校准数据（如500～1000张图片）生成校准表（Calibration table），预测时，加载FP32模型和此校准表即可使用Int8精度预测。生成校准表的方法如下：
+a. Use the built-in functionality of TensorRT-- Int8 post-training quantization calibration. 校准即基于训练好的FP32模型和少量校准数据（如500～1000张图片）生成校准表（Calibration table），预测时，加载FP32模型和此校准表即可使用Int8精度预测。生成校准表的方法如下：
 
   - 指定TensorRT配置时，将 **precision_mode** 设置为 **paddle_infer.PrecisionType.Int8** 并且设置 **use_calib_mode** 为 **True**。
 
