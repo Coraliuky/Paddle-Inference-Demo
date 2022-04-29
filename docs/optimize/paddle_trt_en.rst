@@ -1,14 +1,14 @@
 Using the Paddle-TensorRT Repository for Inference
 ================
 
-NVIDIA TensorRT is a high-performance inference repository of deep learning, and it can lower the latency of the inference applications of deep learning and improve their throughput. PaddlePaddle uses subgraph of integrate TensorRT, so we can use the module to enhance the performance of the Paddle model in inference. In this article, we will talk about how to use the subgraph module of Paddle-TRT to accelerate the inference. 
+NVIDIA TensorRT is a high-performance inference repository of deep learning, and it can lower the latency of the inference applications of deep learning and improve their throughput. PaddlePaddle uses subgraphs to integrate TensorRT, so we can use the module to enhance the performance of the Paddle model in inference. In this article, we will talk about how to use the subgraph module of Paddle-TRT to accelerate the inference. 
 
 If you need to install `TensorRT <https://developer.nvidia.com/nvidia-tensorrt-6x-download>`_, please refer to the `trt document <https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-601/tensorrt-install-guide/index.html>`_.
 
 Overview
 ----------------
 
-After the model is loaded, the neural network can be represented as a computing chart consisting of variables and computing nodes. If the TRT subgraph mode is turned on, Paddle will analyze the model graph, find out subgraphs which can be optimized by TensorRT there in the analysis stage, and replace them with TensorRT nodes. During the model inference, if encountering TensorRT nodes, Paddle will optimize the modes with the TensorRT repository，and optimize other nodes with the original implementation of Paddle. Besides the common OP integration and the video memory/ memory optimization, TensorRT also acclerates the implementation of OP, lowers the inference latency, and improve the throughput. 
+After the model is loaded, the neural network can be represented as a computing chart consisting of variables and computing nodes. If the TRT subgraph mode is turned on, Paddle will analyze the model graph, find out subgraphs which can be optimized by TensorRT there in the analysis stage, and replace them with TensorRT nodes. During the model inference, if encountering TensorRT nodes, Paddle will optimize the modes with the TensorRT repository，and optimize other nodes with the original implementation of Paddle. Besides the common OP integration and the video memory/ memory optimization, TensorRT also accelerates the implementation of OP, lowers the inference latency, and improve the throughput. 
 
 Paddle-TRT support the static shape mode and the dynamic shape mode currently. In the static mode, image classification and segmentation and model detection are available. Also, the inference acceleration of Fp16 and Int8 are supported. In the dynamic mode, in addition to the image models (FCN, Faster rcnn) of the dynamic shape, Bert/Ernie of NLP are also supported.
 
@@ -199,11 +199,11 @@ Then, let's have a look at the function of each parameter in the interface:
 - **workspace_size**，type：int，and the default value is 1 << 30 （1G）. It designates the size of the working space of TensorRT, and TensorRT will sort out the optimum kernel for the execution of the inference computation under this limitation. 
 - **max_batch_size**，type：int，and the default value is 1. The maximum batch is required to be set beforehand, and the batch size cannot exceed this max value in the execution. 
 - **min_subgraph_size**，type：int，and the default value is 3. Paddle-TRT is operated in subgraphs. In order to avoid performance loss, Paddle-TRT will be operated only when the number of nodes within subgraphs is more than min_subgraph_size.
-- **precision_mode**，type: **paddle_infer.PrecisionType**, and the default value is **paddle_infer.PrecisionType.Float32**. It designates the precision of TRT, and supports FP32（Float32）,FP16（Half）,and Int8（Int8）. If you need to use the post-training quantization calibration of Paddle-TRT int8, set the precision to **paddle_infer.PrecisionType.Int8** and **use_calib_mode** to True.
+- **precision_mode**，type: **paddle_infer.PrecisionType**, and the default value is **paddle_infer.PrecisionType.Float32**. It designates the precision of TRT, and supports FP32（Float32）,FP16（Half）,and Int8（Int8）. If you need to use the post-training quantization (PTQ, or offline quantization) calibration of Paddle-TRT int8, set the precision to **paddle_infer.PrecisionType.Int8** and **use_calib_mode** to True.
 - **use_static**，type：bool, and the default value is False. If it is designated as True, then the optimized TRT information will be serialized to the disk during the first run of the program, and will be directly loaded next time without regeneration.
-- **use_calib_mode**，type：bool, and the default value is False. If you need to use the post-training quantization calibration of Paddle-TRT int8, set this to True. 
+- **use_calib_mode**，type：bool, and the default value is False. If you need to use the PTQ calibration of Paddle-TRT int8, set this to True. 
 
-Int8 Quantization Forecast
+Int8 Quantization Inference
 >>>>>>>>>>>>>>
 
 To some extent, the parameters of the neural network are redundant. And in many tasks, we can turn the Float32 model into the Int8 model with the precision assured to reduce the computation amount, computation time length, computation memory, and the model size. There are two steps using Int8 for quantized inference: 1) produce the quantized model; 2) load the quantized model for Int8 inference. In the following part, we will elaborate on how to use Paddle-TRT for Int8 quantized inference.
@@ -212,9 +212,9 @@ To some extent, the parameters of the neural network are redundant. And in many 
 
 There are two methods are supported currently: 
 
-a. Use the built-in functionality of TensorRT-- Int8 post-training quantization calibration. 校准即基于训练好的FP32模型和少量校准数据（如500～1000张图片）生成校准表（Calibration table），预测时，加载FP32模型和此校准表即可使用Int8精度预测。生成校准表的方法如下：
+a. Use the built-in functionality of TensorRT-- Int8 PTQ calibration. In calibration, a calibration table is made based on the trained FP32 model and a few calibrated data (such as 500-1000 images), and during the inference, the FP32 model and the table can be used for the Int8 precision inference. Follow the guide to make the calibration table: 
 
-  - 指定TensorRT配置时，将 **precision_mode** 设置为 **paddle_infer.PrecisionType.Int8** 并且设置 **use_calib_mode** 为 **True**。
+  - When configurating TensorRT，set **precision_mode** to **paddle_infer.PrecisionType.Int8** and **use_calib_mode** to **True**.
 
     .. code:: python
 
@@ -224,26 +224,26 @@ a. Use the built-in functionality of TensorRT-- Int8 post-training quantization 
         precision_mode=paddle_infer.PrecisionType.Int8,
         use_static=False, use_calib_mode=True)
 
-  - 准备500张左右的真实输入数据，在上述配置下，运行模型。（Paddle-TRT会统计模型中每个tensor值的范围信息，并将其记录到校准表中，运行结束后，会将校准表写入模型目录下的 `_opt_cache` 目录中）
+  - Prepare about 500 real input images, and run the model with the above configuration. (Paddle-TRT counts the range value of every tensor and records it in the table. After the running, the table will be written into `_opt_cache`. 
 
-  如果想要了解使用TensorRT自带Int8离线量化校准功能生成校准表的完整代码，请参考 `这里 <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt/README.md#%E7%94%9F%E6%88%90%E9%87%8F%E5%8C%96%E6%A0%A1%E5%87%86%E8%A1%A8>`_ 的demo。
+  If you want to know the code of making the calibration table using TensorRT's built-in functionality of Int8 PTQ calibration, please refer to `the demo here <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt/README.md#%E7%94%9F%E6%88%90%E9%87%8F%E5%8C%96%E6%A0%A1%E5%87%86%E8%A1%A8>`_ .
 
-b. 使用模型压缩工具库PaddleSlim产出量化模型。PaddleSlim支持离线量化和在线量化功能，其中，离线量化与TensorRT离线量化校准原理相似；在线量化又称量化训练(Quantization Aware Training, QAT)，是基于较多数据（如>=5000张图片）对预训练模型进行重新训练，使用模拟量化的思想，在训练阶段更新权重，实现减小量化误差的方法。使用PaddleSlim产出量化模型可以参考文档：
+b. Use the model compression tool library-- PaddleSlim to make the quantized model. PaddleSlim supports offline quantization and online quantization. And the offline quantization is similar to TensorRT PTQ calibration in principle; online quantization is also called quantization aware training (QAT), which depends on massive data (such as >=500 images) to retrain the pretrained model and uses simulation quantization to update the weight in the training so that errors can be reduced. If you want to learn about how to make the quantized model using PaddleSlim, please refer to:
   
-  - 离线量化 `快速开始教程 <https://paddlepaddle.github.io/PaddleSlim/quick_start/quant_post_tutorial.html>`_
-  - 离线量化 `API接口说明 <https://paddlepaddle.github.io/PaddleSlim/api_cn/quantization_api.html#quant-post>`_
-  - 离线量化 `Demo <https://github.com/PaddlePaddle/PaddleSlim/tree/release/1.1.0/demo/quant/quant_post>`_
-  - 量化训练 `快速开始教程 <https://paddlepaddle.github.io/PaddleSlim/quick_start/quant_aware_tutorial.html>`_
-  - 量化训练 `API接口说明 <https://paddlepaddle.github.io/PaddleSlim/api_cn/quantization_api.html#quant-aware>`_
-  - 量化训练 `Demo <https://github.com/PaddlePaddle/PaddleSlim/tree/release/1.1.0/demo/quant/quant_aware>`_
+  - Post-training quantization `quick start <https://paddlepaddle.github.io/PaddleSlim/quick_start/quant_post_tutorial.html>`_
+  - Post-training quantization `API description <https://paddlepaddle.github.io/PaddleSlim/api_cn/quantization_api.html#quant-post>`_
+  - Post-training quantization `Demo <https://github.com/PaddlePaddle/PaddleSlim/tree/release/1.1.0/demo/quant/quant_post>`_
+  - Quant aware training `quick start <https://paddlepaddle.github.io/PaddleSlim/quick_start/quant_aware_tutorial.html>`_
+  - Quant aware training `API description <https://paddlepaddle.github.io/PaddleSlim/api_cn/quantization_api.html#quant-aware>`_
+  - Quant aware training `Demo <https://github.com/PaddlePaddle/PaddleSlim/tree/release/1.1.0/demo/quant/quant_aware>`_
 
-离线量化的优点是无需重新训练，简单易用，但量化后精度可能受影响；量化训练的优点是模型精度受量化影响较小，但需要重新训练模型，使用门槛稍高。在实际使用中，我们推荐先使用TRT离线量化校准功能生成量化模型，若精度不能满足需求，再使用PaddleSlim产出量化模型。
+In PTQ, retraining is not required, but the precision may be affected. In QAT, the precision may be less affected, but retraining is required, and it is more complicated to perform QAT. Practically speaking, it is recommended to use the TRT functionality of PTQ calibration to make the quantized model. If the precision cannot meet the standard, then resort to PaddleSlim. 
   
-**2. 加载量化模型进行Int8预测**       
+**2. Load the quantized model for Int8 inference**       
 
-  加载量化模型进行Int8预测，需要在指定TensorRT配置时，将 **precision_mode** 设置为 **paddle_infer.PrecisionType.Int8** 。
+  First, in the configuration of TensorRT, set **precision_mode** to **paddle_infer.PrecisionType.Int8** .
 
-  若使用的量化模型为TRT离线量化校准产出的，需要将 **use_calib_mode** 设为 **True** ：
+  If the quantized model is made by the TRT PTQ calibration, set **use_calib_mode** to **True** ：
 
   .. code:: python
 
@@ -253,9 +253,9 @@ b. 使用模型压缩工具库PaddleSlim产出量化模型。PaddleSlim支持离
       precision_mode=paddle_infer.PrecisionType.Int8,
       use_static=False, use_calib_mode=True)
 
-  完整demo请参考 `这里 <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt/README.md#%E5%8A%A0%E8%BD%BD%E6%A0%A1%E5%87%86%E8%A1%A8%E6%89%A7%E8%A1%8Cint8%E9%A2%84%E6%B5%8B>`_ 。
+  For the complete demo, please refer to `here <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt/README.md#%E5%8A%A0%E8%BD%BD%E6%A0%A1%E5%87%86%E8%A1%A8%E6%89%A7%E8%A1%8Cint8%E9%A2%84%E6%B5%8B>`_ .
   
-  若使用的量化模型为PaddleSlim量化产出的，需要将 **use_calib_mode** 设为 **False** ：
+  If the quantized model is made by PaddleSlim quantization，set **use_calib_mode** to **False** ：
 
   .. code:: python
 
@@ -265,13 +265,13 @@ b. 使用模型压缩工具库PaddleSlim产出量化模型。PaddleSlim支持离
       precision_mode=paddle_infer.PrecisionType.Int8,
       use_static=False, use_calib_mode=False)
 
-  完整demo请参考 `这里 <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt/README.md#%E4%B8%89%E4%BD%BF%E7%94%A8trt-%E5%8A%A0%E8%BD%BDpaddleslim-int8%E9%87%8F%E5%8C%96%E6%A8%A1%E5%9E%8B%E9%A2%84%E6%B5%8B>`_ 。
+  For the complete demo, please refer to `here <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt/README.md#%E4%B8%89%E4%BD%BF%E7%94%A8trt-%E5%8A%A0%E8%BD%BDpaddleslim-int8%E9%87%8F%E5%8C%96%E6%A8%A1%E5%9E%8B%E9%A2%84%E6%B5%8B>`_ .
 
-运行Dynamic shape
+Run dynamic shape
 >>>>>>>>>>>>>>
 
-从1.8 版本开始， Paddle对TRT子图进行了Dynamic shape的支持。
-使用接口如下：
+Since the version 1.8, Paddle has begun to support the dynamic shape for the TRT subgraph.
+APIs adopted here include：
 
 .. code:: python
 
@@ -289,35 +289,35 @@ b. 使用模型压缩工具库PaddleSlim产出量化模型。PaddleSlim支持离
 
 
 
-从上述使用方式来看，在 config.enable_tensorrt_engine 接口的基础上，新加了一个config.set_trt_dynamic_shape_info 的接口。     
+It can be seen that on the basis of config.enable_tensorrt_engine，there is another interface--config.set_trt_dynamic_shape_info added.  
 
-该接口用来设置模型输入的最小，最大，以及最优的输入shape。 其中，最优的shape处于最小最大shape之间，在预测初始化期间，会根据opt shape对op选择最优的kernel。   
+The newly added interface is used to set the minimum, maximum, and optimum input shapes. The optimum shape lies between the minimum and the maximum. At the beginning of the inference, the optimum kernel of OPs will be chosen according to the optimum shape. 
 
-调用了 **config.set_trt_dynamic_shape_info** 接口，预测器会运行TRT子图的动态输入模式，运行期间可以接受最小，最大shape间的任意的shape的输入数据。
+The **config.set_trt_dynamic_shape_info** interface is adopted, the predictor will run the dynamic input mode of the TRT subgraph. During the running, any input shape between the minimum and the maximum is OK. 
 
 
 
-三：测试样例
+III. Test demo
 -------------
 
-我们在github上提供了使用TRT子图预测的更多样例：
+More demos using the TRT subgraph for inference are provided on the github. 
 
-- Python 样例请访问此处 `链接 <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/python/paddle_trt>`_ 。
-- C++ 样例地址请访问此处 `链接 <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt>`_ 。
+- For Python demos, please refer to `the link <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/python/paddle_trt>`_ .
+- For C++ demos, please refer to `the link <https://github.com/PaddlePaddle/Paddle-Inference-Demo/tree/master/c%2B%2B/paddle-trt>`_ .
 
-四：Paddle-TRT子图运行原理
+IV. The principle of the Paddle-TRT subgraph
 ---------------
 
-   PaddlePaddle采用子图的形式对TensorRT进行集成，当模型加载后，神经网络可以表示为由变量和运算节点组成的计算图。Paddle TensorRT实现的功能是对整个图进行扫描，发现图中可以使用TensorRT优化的子图，并使用TensorRT节点替换它们。在模型的推断期间，如果遇到TensorRT节点，Paddle会调用TensorRT库对该节点进行优化，其他的节点调用Paddle的原生实现。TensorRT在推断期间能够进行Op的横向和纵向融合，过滤掉冗余的Op，并对特定平台下的特定的Op选择合适的kernel等进行优化，能够加快模型的预测速度。  
+   PaddlePaddle uses the subgraph to integrate TensorRT, and after loading the model, the neural network can be presented as a computing chart consisting of variables and computing nodes. Paddle TensorRT scans the whole image, detects subgraphs which can be optimized by TensorRT and replaces them with its nodes. If encountering TensorRT nodes, Paddle will adopt the TensorRT repository to optimize them, and use its original implementation for other nodes. During the inference, TensorRT can merge OPs both horizontally and vertically, filter out redundant OPs, and choose optimum kernels to optimize OPs in certain platform so that the model inference can be accelerated. 
 
-下图使用一个简单的模型展示了这个过程：  
+The following figure shows the process by taking a simple model as an example: 
 
-**原始网络**
+**Original Network**
 
 	.. image:: https://raw.githubusercontent.com/NHZlX/FluidDoc/add_trt_doc/doc/fluid/user_guides/howto/inference/image/model_graph_original.png
 
-**转换的网络**
+**Converted Network**
 
 	.. image:: https://raw.githubusercontent.com/NHZlX/FluidDoc/add_trt_doc/doc/fluid/user_guides/howto/inference/image/model_graph_trt.png
 
- 我们可以在原始模型网络中看到，绿色节点表示可以被TensorRT支持的节点，红色节点表示网络中的变量，黄色表示Paddle只能被Paddle原生实现执行的节点。那些在原始网络中的绿色节点被提取出来汇集成子图，并由一个TensorRT节点代替，成为转换后网络中的 **block-25** 节点。在网络运行过程中，如果遇到该节点，Paddle将调用TensorRT库来对其执行。
+ From the original network, we can know that the green nodes are those supported by TensorRT, the red are variables in the network, the yellow are the nodes only can be executed by Paddle's original implementation. Those green nodes are extracted from the original network and integrated into subgraphs. Then they are replaced with a TensorRT node and turn into the **block-25** node. When meeting this node, Paddle will call the TensorRT repository to execute it. 
